@@ -317,6 +317,8 @@ const FIELD_LABELS: Record<string, string> = {
   "channels.whatsapp.dmPolicy": "WhatsApp DM Policy",
   "channels.whatsapp.selfChatMode": "WhatsApp Self-Phone Mode",
   "channels.whatsapp.debounceMs": "WhatsApp Message Debounce (ms)",
+  "channels.whatsapp.passiveMonitor": "WhatsApp Passive Monitor",
+  "channels.whatsapp.passiveMonitor.enabled": "WhatsApp Passive Monitor Enabled",
   "channels.signal.dmPolicy": "Signal DM Policy",
   "channels.imessage.dmPolicy": "iMessage DM Policy",
   "channels.bluebubbles.dmPolicy": "BlueBubbles DM Policy",
@@ -656,6 +658,10 @@ const FIELD_HELP: Record<string, string> = {
   "channels.whatsapp.selfChatMode": "Same-phone setup (bot uses your personal WhatsApp number).",
   "channels.whatsapp.debounceMs":
     "Debounce window (ms) for batching rapid consecutive messages from the same sender (0 to disable).",
+  "channels.whatsapp.passiveMonitor":
+    "Passive monitor settings for logging inbound WhatsApp messages to memory.",
+  "channels.whatsapp.passiveMonitor.enabled":
+    "Write inbound WhatsApp messages to memory/whatsapp/*.md before access control (default: false).",
   "channels.signal.dmPolicy":
     'Direct message access control ("pairing" recommended). "open" requires channels.signal.allowFrom=["*"].',
   "channels.imessage.dmPolicy":

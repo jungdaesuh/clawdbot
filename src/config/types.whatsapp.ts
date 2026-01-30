@@ -90,6 +90,11 @@ export type WhatsAppConfig = {
   };
   /** Debounce window (ms) for batching rapid consecutive messages from the same sender (0 to disable). */
   debounceMs?: number;
+  /** Passive monitor settings for logging inbound WhatsApp messages to memory. */
+  passiveMonitor?: {
+    /** Enable passive WhatsApp logging (default: false). */
+    enabled?: boolean;
+  };
   /** Heartbeat visibility settings for this channel. */
   heartbeat?: ChannelHeartbeatVisibilityConfig;
 };
