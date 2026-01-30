@@ -3,6 +3,7 @@ import {
   buildSafeExternalPrompt,
   detectSuspiciousPatterns,
   getHookType,
+  hasExternalContentBoundary,
   isExternalHookSession,
   wrapExternalContent,
 } from "./external-content.js";
@@ -83,6 +84,17 @@ describe("external-content security", () => {
 
       expect(result).not.toContain("SECURITY NOTICE");
       expect(result).toContain("<<<EXTERNAL_UNTRUSTED_CONTENT>>>");
+    });
+  });
+
+  describe("hasExternalContentBoundary", () => {
+    it("detects boundary markers", () => {
+      const wrapped = wrapExternalContent("Hello", { source: "email" });
+      expect(hasExternalContentBoundary(wrapped)).toBe(true);
+    });
+
+    it("returns false for plain text", () => {
+      expect(hasExternalContentBoundary("Just text")).toBe(false);
     });
   });
 

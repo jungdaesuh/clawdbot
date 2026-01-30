@@ -83,6 +83,8 @@ import { buildTtsSystemPromptHint } from "../../../tts/tts.js";
 import { isTimeoutError } from "../../failover-error.js";
 import { getGlobalHookRunner } from "../../../plugins/hook-runner-global.js";
 import { MAX_IMAGE_BYTES } from "../../../media/constants.js";
+import { TOOL_GATE_UNTRUSTED_HOOK_REASON, blockToolGate } from "../../tool-gate.js";
+import { markUntrustedConfirmationPending } from "../../untrusted-confirmation.js";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
 import { detectAndLoadPromptImages } from "./images.js";
 
@@ -232,6 +234,7 @@ export async function runEmbeddedAttempt(
           replyToMode: params.replyToMode,
           hasRepliedRef: params.hasRepliedRef,
           modelHasVision,
+          toolGate: params.toolGate,
         });
     const tools = sanitizeToolsForGoogle({ tools: toolsRaw, provider: params.provider });
     logToolSchemasForGoogle({ tools, provider: params.provider });
@@ -440,8 +443,11 @@ export async function runEmbeddedAttempt(
       // Add client tools (OpenResponses hosted tools) to customTools
       let clientToolCallDetected: { name: string; params: Record<string, unknown> } | null = null;
       const clientToolDefs = params.clientTools
-        ? toClientToolDefinitions(params.clientTools, (toolName, toolParams) => {
-            clientToolCallDetected = { name: toolName, params: toolParams };
+        ? toClientToolDefinitions(params.clientTools, {
+            toolGate: params.toolGate,
+            onClientToolCall: (toolName, toolParams) => {
+              clientToolCallDetected = { name: toolName, params: toolParams };
+            },
           })
         : [];
 
@@ -704,6 +710,19 @@ export async function runEmbeddedAttempt(
               log.debug(
                 `hooks: prepended context to prompt (${hookResult.prependContext.length} chars)`,
               );
+            }
+            if (hookResult?.requiresToolConfirmation) {
+              if (params.toolGate) {
+                blockToolGate(params.toolGate, {
+                  reason: TOOL_GATE_UNTRUSTED_HOOK_REASON,
+                  source: "hook",
+                });
+              }
+              void markUntrustedConfirmationPending({
+                config: params.config,
+                sessionKey: params.sessionKey,
+                agentId: sessionAgentId,
+              });
             }
           } catch (hookErr) {
             log.warn(`before_agent_start hook failed: ${String(hookErr)}`);

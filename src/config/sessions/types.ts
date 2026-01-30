@@ -77,6 +77,10 @@ export type SessionEntry = {
   compactionCount?: number;
   memoryFlushAt?: number;
   memoryFlushCompactionCount?: number;
+  /** Untrusted memory was accessed; confirmation required before tool actions. */
+  untrustedMemoryPending?: boolean;
+  /** Timestamp (ms) when untrusted memory confirmation was first required. */
+  untrustedMemoryPendingAt?: number;
   cliSessionIds?: Record<string, string>;
   claudeCliSessionId?: string;
   label?: string;

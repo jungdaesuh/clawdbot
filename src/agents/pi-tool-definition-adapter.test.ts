@@ -1,7 +1,8 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { describe, expect, it } from "vitest";
 
-import { toToolDefinitions } from "./pi-tool-definition-adapter.js";
+import { toClientToolDefinitions, toToolDefinitions } from "./pi-tool-definition-adapter.js";
+import { createToolGate } from "./tool-gate.js";
 
 describe("pi tool definition adapter", () => {
   it("wraps tool errors into a tool result", async () => {
@@ -44,6 +45,23 @@ describe("pi tool definition adapter", () => {
       status: "error",
       tool: "exec",
       error: "nope",
+    });
+  });
+
+  it("blocks client tool calls when tool gate is blocked", async () => {
+    const gate = createToolGate({ blocked: true });
+    const defs = toClientToolDefinitions(
+      [
+        {
+          type: "function",
+          function: { name: "client_action", parameters: {} },
+        },
+      ],
+      { toolGate: gate },
+    );
+    const result = await defs[0].execute("call1", {}, undefined, undefined);
+    expect(result.details).toMatchObject({
+      blocked: true,
     });
   });
 });

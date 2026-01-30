@@ -6,7 +6,10 @@ import {
   readTool,
 } from "@mariozechner/pi-coding-agent";
 import type { OpenClawConfig } from "../config/config.js";
+import { isUntrustedMemoryPath, normalizeRelPath } from "../memory/internal.js";
 import { isSubagentSessionKey } from "../routing/session-key.js";
+import type { ExternalContentSource } from "../security/external-content.js";
+import { hasExternalContentBoundary, wrapExternalContent } from "../security/external-content.js";
 import { resolveGatewayMessageChannel } from "../utils/message-channel.js";
 import { createApplyPatchTool } from "./apply-patch.js";
 import {
@@ -40,6 +43,8 @@ import {
 import { cleanToolSchemaForGemini, normalizeToolParameters } from "./pi-tools.schema.js";
 import type { AnyAgentTool } from "./pi-tools.types.js";
 import type { SandboxContext } from "./sandbox.js";
+import { TOOL_GATE_UNTRUSTED_REASON, blockToolGate, type ToolGate } from "./tool-gate.js";
+import { markUntrustedConfirmationPending, type PendingMarker } from "./untrusted-confirmation.js";
 import {
   buildPluginToolGroups,
   collectExplicitAllowlist,
@@ -50,10 +55,134 @@ import {
 } from "./tool-policy.js";
 import { getPluginToolMeta } from "../plugins/tools.js";
 import { logWarn } from "../logger.js";
+import { jsonResult } from "./tools/common.js";
 
 function isOpenAIProvider(provider?: string) {
   const normalized = provider?.trim().toLowerCase();
   return normalized === "openai" || normalized === "openai-codex";
+}
+
+const TOOL_GATE_SAFE_TOOLS = new Set(["memory_search", "memory_get"]);
+
+type ToolExecuteResult = Awaited<ReturnType<NonNullable<AnyAgentTool["execute"]>>>;
+
+function resolveUntrustedSource(pathValue: string): ExternalContentSource {
+  const normalized = normalizeRelPath(pathValue);
+  if (normalized.startsWith("memory/whatsapp/")) return "whatsapp";
+  return "unknown";
+}
+
+function wrapUntrustedContent(content: string, source: ExternalContentSource): string {
+  const trimmed = content.trim();
+  if (!trimmed) return content;
+  if (hasExternalContentBoundary(content)) return content;
+  return wrapExternalContent(content, { source });
+}
+
+function rebuildToolResult(result: ToolExecuteResult, details: unknown): ToolExecuteResult {
+  return {
+    ...result,
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(details, null, 2),
+      },
+    ],
+    details,
+  };
+}
+
+function applyMemorySearchGuards(
+  result: ToolExecuteResult,
+  gate?: ToolGate,
+  context?: { config?: OpenClawConfig; sessionKey?: string; pendingMarker?: PendingMarker },
+) {
+  const details = (result as { details?: unknown }).details;
+  if (!details || typeof details !== "object") return result;
+  const rawResults = (details as { results?: unknown }).results;
+  if (!Array.isArray(rawResults)) return result;
+  let hasUntrusted = false;
+  const nextResults = rawResults.map((entry) => {
+    if (!entry || typeof entry !== "object") return entry;
+    const record = entry as Record<string, unknown>;
+    const pathValue = typeof record.path === "string" ? record.path : "";
+    const untrusted = pathValue ? isUntrustedMemoryPath(pathValue) : false;
+    if (untrusted) hasUntrusted = true;
+    const snippet = typeof record.snippet === "string" ? record.snippet : "";
+    const wrappedSnippet = untrusted
+      ? wrapUntrustedContent(snippet, resolveUntrustedSource(pathValue))
+      : snippet;
+    return {
+      ...record,
+      snippet: wrappedSnippet,
+      trusted: !untrusted,
+    };
+  });
+  if (gate && hasUntrusted) {
+    blockToolGate(gate, { reason: TOOL_GATE_UNTRUSTED_REASON, source: "memory" });
+    void markUntrustedConfirmationPending(context ?? {});
+  }
+  const nextDetails = { ...(details as Record<string, unknown>), results: nextResults };
+  return rebuildToolResult(result, nextDetails);
+}
+
+function applyMemoryGetGuards(
+  result: ToolExecuteResult,
+  gate?: ToolGate,
+  context?: { config?: OpenClawConfig; sessionKey?: string; pendingMarker?: PendingMarker },
+) {
+  const details = (result as { details?: unknown }).details;
+  if (!details || typeof details !== "object") return result;
+  const record = details as Record<string, unknown>;
+  const pathValue = typeof record.path === "string" ? record.path : "";
+  if (!pathValue) return result;
+  const untrusted = isUntrustedMemoryPath(pathValue);
+  const text = typeof record.text === "string" ? record.text : "";
+  const wrappedText = untrusted
+    ? wrapUntrustedContent(text, resolveUntrustedSource(pathValue))
+    : text;
+  if (gate && untrusted) {
+    blockToolGate(gate, { reason: TOOL_GATE_UNTRUSTED_REASON, source: "memory" });
+    void markUntrustedConfirmationPending(context ?? {});
+  }
+  const nextDetails = {
+    ...record,
+    text: wrappedText,
+    trusted: !untrusted,
+  };
+  return rebuildToolResult(result, nextDetails);
+}
+
+function wrapToolWithGate(
+  tool: AnyAgentTool,
+  gate?: ToolGate,
+  context?: { config?: OpenClawConfig; sessionKey?: string; pendingMarker?: PendingMarker },
+): AnyAgentTool {
+  if (!gate) return tool;
+  const execute = tool.execute;
+  if (!execute) return tool;
+  const normalizedName = normalizeToolName(tool.name);
+  return {
+    ...tool,
+    execute: async (toolCallId, params, signal, onUpdate) => {
+      const allowDuringBlock = TOOL_GATE_SAFE_TOOLS.has(normalizedName) && gate.source === "memory";
+      if (gate.blocked && !allowDuringBlock) {
+        return jsonResult({
+          blocked: true,
+          reason: gate.reason ?? TOOL_GATE_UNTRUSTED_REASON,
+          source: gate.source ?? "memory",
+        });
+      }
+      const result = await execute(toolCallId, params, signal, onUpdate);
+      if (normalizedName === "memory_search") {
+        return applyMemorySearchGuards(result, gate, context);
+      }
+      if (normalizedName === "memory_get") {
+        return applyMemoryGetGuards(result, gate, context);
+      }
+      return result;
+    },
+  };
 }
 
 function isApplyPatchAllowedForModel(params: {
@@ -150,6 +279,8 @@ export function createOpenClawCodingTools(options?: {
   hasRepliedRef?: { value: boolean };
   /** If true, the model has native vision capability */
   modelHasVision?: boolean;
+  /** Optional tool gate for untrusted content enforcement. */
+  toolGate?: ToolGate;
 }): AnyAgentTool[] {
   const execToolName = "exec";
   const sandbox = options?.sandbox?.enabled ? options.sandbox : undefined;
@@ -379,6 +510,7 @@ export function createOpenClawCodingTools(options?: {
   const sandboxPolicyExpanded = expandPolicyWithPluginGroups(sandbox?.tools, pluginGroups);
   const subagentPolicyExpanded = expandPolicyWithPluginGroups(subagentPolicy, pluginGroups);
 
+  const pendingMarker = { value: false };
   const toolsFiltered = profilePolicyExpanded
     ? filterToolsByPolicy(tools, profilePolicyExpanded)
     : tools;
@@ -412,9 +544,18 @@ export function createOpenClawCodingTools(options?: {
   const withAbort = options?.abortSignal
     ? normalized.map((tool) => wrapToolWithAbortSignal(tool, options.abortSignal))
     : normalized;
+  const gated = options?.toolGate
+    ? withAbort.map((tool) =>
+        wrapToolWithGate(tool, options.toolGate, {
+          config: options?.config,
+          sessionKey: options?.sessionKey,
+          pendingMarker,
+        }),
+      )
+    : withAbort;
 
   // NOTE: Keep canonical (lowercase) tool names here.
   // pi-ai's Anthropic OAuth transport remaps tool names to Claude Code-style names
   // on the wire and maps them back for tool dispatch.
-  return withAbort;
+  return gated;
 }
