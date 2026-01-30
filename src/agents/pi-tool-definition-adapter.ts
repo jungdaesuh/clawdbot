@@ -8,6 +8,7 @@ import type { ClientToolDefinition } from "./pi-embedded-runner/run/params.js";
 import { logDebug, logError } from "../logger.js";
 import { normalizeToolName } from "./tool-policy.js";
 import { jsonResult } from "./tools/common.js";
+import { TOOL_GATE_UNTRUSTED_REASON, type ToolGate } from "./tool-gate.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: TypeBox schema type from pi-agent-core uses a different module instance.
 type AnyAgentTool = AgentTool<any, unknown>;
@@ -71,7 +72,10 @@ export function toToolDefinitions(tools: AnyAgentTool[]): ToolDefinition[] {
 // These tools are intercepted to return a "pending" result instead of executing
 export function toClientToolDefinitions(
   tools: ClientToolDefinition[],
-  onClientToolCall?: (toolName: string, params: Record<string, unknown>) => void,
+  options?: {
+    onClientToolCall?: (toolName: string, params: Record<string, unknown>) => void;
+    toolGate?: ToolGate;
+  },
 ): ToolDefinition[] {
   return tools.map((tool) => {
     const func = tool.function;
@@ -87,9 +91,16 @@ export function toClientToolDefinitions(
         _ctx,
         _signal,
       ): Promise<AgentToolResult<unknown>> => {
+        if (options?.toolGate?.blocked) {
+          return jsonResult({
+            blocked: true,
+            reason: options.toolGate.reason ?? TOOL_GATE_UNTRUSTED_REASON,
+            source: options.toolGate.source ?? "memory",
+          });
+        }
         // Notify handler that a client tool was called
-        if (onClientToolCall) {
-          onClientToolCall(func.name, params as Record<string, unknown>);
+        if (options?.onClientToolCall) {
+          options.onClientToolCall(func.name, params as Record<string, unknown>);
         }
         // Return a pending result - the client will execute this tool
         return jsonResult({

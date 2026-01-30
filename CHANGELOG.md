@@ -32,6 +32,7 @@ Status: stable.
 - Tlon: format thread reply IDs as @ud. (#1837) Thanks @wca4a.
 - Tools: add per-sender group tool policies and fix precedence. (#1757) Thanks @adam91holt.
 - Agents: summarize dropped messages during compaction safeguard pruning. (#2509) Thanks @jogi47.
+- Agents: gate tool execution after untrusted memory or hook context until explicit confirmation. (#2) Thanks @jungdaesuh.
 - Agents: expand cron tool description with full schema docs. (#1988) Thanks @tomascupr.
 - Agents: honor tools.exec.safeBins in exec allowlist checks. (#2281)
 - Memory Search: allow extra paths for memory indexing (ignores symlinks). (#3600) Thanks @kira-ariaki.

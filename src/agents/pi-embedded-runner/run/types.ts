@@ -10,6 +10,7 @@ import type { MessagingToolSend } from "../../pi-embedded-messaging.js";
 import type { BlockReplyChunking, ToolResultFormat } from "../../pi-embedded-subscribe.js";
 import type { SkillSnapshot } from "../../skills.js";
 import type { SessionSystemPromptReport } from "../../../config/sessions/types.js";
+import type { ToolGate } from "../../tool-gate.js";
 import type { ClientToolDefinition } from "./params.js";
 
 type AuthStorage = ReturnType<typeof discoverAuthStorage>;
@@ -50,6 +51,8 @@ export type EmbeddedRunAttemptParams = {
   clientTools?: ClientToolDefinition[];
   /** Disable built-in tools for this run (LLM-only mode). */
   disableTools?: boolean;
+  /** Optional tool gate for untrusted content enforcement. */
+  toolGate?: ToolGate;
   provider: string;
   modelId: string;
   model: Model<Api>;

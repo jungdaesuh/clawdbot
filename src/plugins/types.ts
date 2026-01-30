@@ -319,6 +319,8 @@ export type PluginHookBeforeAgentStartEvent = {
 export type PluginHookBeforeAgentStartResult = {
   systemPrompt?: string;
   prependContext?: string;
+  /** Require explicit confirmation before tools can run in this session. */
+  requiresToolConfirmation?: boolean;
 };
 
 // agent_end hook

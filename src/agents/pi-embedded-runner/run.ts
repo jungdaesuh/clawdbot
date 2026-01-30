@@ -3,6 +3,7 @@ import type { ThinkLevel } from "../../auto-reply/thinking.js";
 import { enqueueCommandInLane } from "../../process/command-queue.js";
 import { resolveUserPath } from "../../utils.js";
 import { isMarkdownCapableMessageChannel } from "../../utils/message-channel.js";
+import { isExternalHookSession } from "../../security/external-content.js";
 import { resolveOpenClawAgentDir } from "../agent-paths.js";
 import {
   isProfileInCooldown,
@@ -52,6 +53,7 @@ import type { RunEmbeddedPiAgentParams } from "./run/params.js";
 import { buildEmbeddedRunPayloads } from "./run/payloads.js";
 import type { EmbeddedPiAgentMeta, EmbeddedPiRunResult } from "./types.js";
 import { describeUnknownError } from "./utils.js";
+import { TOOL_GATE_UNTRUSTED_HOOK_REASON, blockToolGate, createToolGate } from "../tool-gate.js";
 
 type ApiKeyInfo = ResolvedProviderAuth;
 
@@ -85,6 +87,10 @@ export async function runEmbeddedPiAgent(
         : "plain"
       : "markdown");
   const isProbeSession = params.sessionId?.startsWith("probe-") ?? false;
+  const toolGate = params.disableTools ? undefined : (params.toolGate ?? createToolGate());
+  if (toolGate && isExternalHookSession(params.sessionKey ?? "")) {
+    blockToolGate(toolGate, { reason: TOOL_GATE_UNTRUSTED_HOOK_REASON, source: "hook" });
+  }
 
   return enqueueSession(() =>
     enqueueGlobal(async () => {
@@ -325,6 +331,7 @@ export async function runEmbeddedPiAgent(
             prompt,
             images: params.images,
             disableTools: params.disableTools,
+            toolGate,
             provider,
             modelId,
             model,

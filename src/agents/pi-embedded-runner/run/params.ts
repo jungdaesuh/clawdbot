@@ -6,6 +6,7 @@ import type { enqueueCommand } from "../../../process/command-queue.js";
 import type { ExecElevatedDefaults, ExecToolDefaults } from "../../bash-tools.js";
 import type { BlockReplyChunking, ToolResultFormat } from "../../pi-embedded-subscribe.js";
 import type { SkillSnapshot } from "../../skills.js";
+import type { ToolGate } from "../../tool-gate.js";
 
 // Simplified tool definition for client-provided tools (OpenResponses hosted tools)
 export type ClientToolDefinition = {
@@ -58,6 +59,8 @@ export type RunEmbeddedPiAgentParams = {
   clientTools?: ClientToolDefinition[];
   /** Disable built-in tools for this run (LLM-only mode). */
   disableTools?: boolean;
+  /** Optional tool gate for untrusted content enforcement. */
+  toolGate?: ToolGate;
   provider?: string;
   model?: string;
   authProfileId?: string;

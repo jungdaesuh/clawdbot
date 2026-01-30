@@ -48,6 +48,14 @@ export function isMemoryPath(relPath: string): boolean {
   return normalized.startsWith("memory/");
 }
 
+const UNTRUSTED_MEMORY_PREFIXES = ["memory/whatsapp/"];
+
+export function isUntrustedMemoryPath(relPath: string): boolean {
+  const normalized = normalizeRelPath(relPath);
+  if (!normalized) return false;
+  return UNTRUSTED_MEMORY_PREFIXES.some((prefix) => normalized.startsWith(prefix));
+}
+
 async function walkDir(dir: string, files: string[]) {
   const entries = await fs.readdir(dir, { withFileTypes: true });
   for (const entry of entries) {
