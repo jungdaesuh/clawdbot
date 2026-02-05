@@ -128,6 +128,12 @@ export const WhatsAppConfigSchema = z
       .strict()
       .optional(),
     debounceMs: z.number().int().nonnegative().optional().default(0),
+    passiveMonitor: z
+      .object({
+        enabled: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
     heartbeat: ChannelHeartbeatVisibilitySchema,
   })
   .strict()

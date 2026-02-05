@@ -77,6 +77,13 @@ import { monitorWebInbox, resetWebInboundDedupe } from "./inbound.js";
 const _ACCOUNT_ID = "default";
 let authDir: string;
 
+async function waitForFile(pathname: string, attempts = 20): Promise<void> {
+  for (let i = 0; i < attempts; i += 1) {
+    if (fsSync.existsSync(pathname)) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
 describe("web monitor inbox", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -369,5 +376,65 @@ describe("web monitor inbox", () => {
     );
 
     await listener.close();
+  });
+
+  it("logs passive monitor entries before access control", async () => {
+    const workspaceDir = fsSync.mkdtempSync(path.join(os.tmpdir(), "moltbot-workspace-"));
+    mockLoadConfig.mockReturnValue({
+      channels: {
+        whatsapp: {
+          dmPolicy: "disabled",
+          passiveMonitor: { enabled: true },
+        },
+      },
+      agents: {
+        defaults: {
+          workspace: workspaceDir,
+        },
+      },
+      messages: {
+        messagePrefix: undefined,
+        responsePrefix: undefined,
+      },
+    });
+
+    try {
+      const onMessage = vi.fn();
+      const listener = await monitorWebInbox({
+        verbose: false,
+        onMessage,
+        accountId: _ACCOUNT_ID,
+        authDir,
+      });
+      const sock = await createWaSocket();
+      const upsert = {
+        type: "notify",
+        messages: [
+          {
+            key: { id: "passive1", fromMe: false, remoteJid: "999@s.whatsapp.net" },
+            message: { conversation: "ping" },
+            messageTimestamp: 1_700_000_000,
+            pushName: "Tester",
+          },
+        ],
+      };
+
+      const timestampMs = 1_700_000_000 * 1000;
+      const dateStr = new Date(timestampMs).toISOString().slice(0, 10);
+      const logPath = path.join(workspaceDir, "memory", "whatsapp", `${dateStr}.md`);
+
+      sock.ev.emit("messages.upsert", upsert);
+      await waitForFile(logPath);
+
+      expect(onMessage).not.toHaveBeenCalled();
+      const content = fsSync.readFileSync(logPath, "utf-8");
+      expect(content).toContain(`# WhatsApp Messages - ${dateStr}`);
+      expect(content).toContain("Direct: +999");
+      expect(content).toContain("ping");
+
+      await listener.close();
+    } finally {
+      fsSync.rmSync(workspaceDir, { recursive: true, force: true });
+    }
   });
 });

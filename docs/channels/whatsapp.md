@@ -348,6 +348,22 @@ WhatsApp sends audio as **voice notes** (PTT bubble).
 - If maxAttempts reached, web monitoring stops (degraded).
 - Logged-out => stop and require re-link.
 
+## Passive monitor
+
+Log inbound WhatsApp text to the agent workspace memory. This runs **before** access control, so blocked senders are still recorded. Outbound text appears when WhatsApp Web echoes sent messages back through the socket.
+
+```json5
+{
+  channels: {
+    whatsapp: {
+      passiveMonitor: { enabled: true }
+    }
+  }
+}
+```
+
+Entries are written under `memory/whatsapp/YYYY-MM-DD.md` in the agent workspace.
+
 ## Config quick map
 
 - `channels.whatsapp.dmPolicy` (DM policy: pairing/allowlist/open/disabled).
@@ -355,6 +371,7 @@ WhatsApp sends audio as **voice notes** (PTT bubble).
 - `channels.whatsapp.allowFrom` (DM allowlist). WhatsApp uses E.164 phone numbers (no usernames).
 - `channels.whatsapp.mediaMaxMb` (inbound media save cap).
 - `channels.whatsapp.ackReaction` (auto-reaction on message receipt: `{emoji, direct, group}`).
+- `channels.whatsapp.passiveMonitor.enabled` (log inbound text to workspace memory).
 - `channels.whatsapp.accounts.<accountId>.*` (per-account settings + optional `authDir`).
 - `channels.whatsapp.accounts.<accountId>.mediaMaxMb` (per-account inbound media cap).
 - `channels.whatsapp.accounts.<accountId>.ackReaction` (per-account ack reaction override).

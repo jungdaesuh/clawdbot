@@ -516,6 +516,22 @@ For groups, use `channels.whatsapp.groupPolicy` + `channels.whatsapp.groupAllowF
 }
 ```
 
+### `channels.whatsapp.passiveMonitor.enabled`
+
+When enabled, inbound WhatsApp text is appended to the agent workspace memory before access control. Outbound text is captured when WhatsApp Web echoes sent messages back through the socket. Default: `false`.
+
+Entries are stored under `memory/whatsapp/YYYY-MM-DD.md` in the agent workspace.
+
+```json5
+{
+  channels: {
+    whatsapp: {
+      passiveMonitor: { enabled: true }
+    }
+  }
+}
+```
+
 ### `channels.whatsapp.sendReadReceipts`
 
 Controls whether inbound WhatsApp messages are marked as read (blue ticks). Default: `true`.

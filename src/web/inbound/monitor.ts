@@ -3,6 +3,8 @@ import { DisconnectReason, isJidGroup } from "@whiskeysockets/baileys";
 import type { WebInboundMessage, WebListenerCloseReason } from "./types.js";
 import { createInboundDebouncer } from "../../auto-reply/inbound-debounce.js";
 import { formatLocationText } from "../../channels/location.js";
+import { loadConfig } from "../../config/config.js";
+import { resolveAgentRoute } from "../../routing/resolve-route.js";
 import { logVerbose, shouldLogVerbose } from "../../globals.js";
 import { recordChannelActivity } from "../../infra/channel-activity.js";
 import { getChildLogger } from "../../logging/logger.js";
@@ -20,6 +22,7 @@ import {
   extractText,
 } from "./extract.js";
 import { downloadInboundMedia } from "./media.js";
+import { appendPassiveWhatsAppMessage } from "./passive-monitor.js";
 import { createWebSendApi } from "./send-api.js";
 
 export async function monitorWebInbox(options: {
@@ -198,6 +201,34 @@ export async function monitorWebInbox(options: {
       const messageTimestampMs = msg.messageTimestamp
         ? Number(msg.messageTimestamp) * 1000
         : undefined;
+
+      // --- Passive monitor: log inbound text before access control ---
+      const monitorBody = extractText(msg.message ?? undefined);
+      if (monitorBody) {
+        const cfg = loadConfig();
+        if (cfg.channels?.whatsapp?.passiveMonitor?.enabled) {
+          const peerId = group ? remoteJid : from;
+          const route = resolveAgentRoute({
+            cfg,
+            channel: "whatsapp",
+            accountId: options.accountId,
+            peer: { kind: group ? "group" : "dm", id: peerId },
+          });
+          await appendPassiveWhatsAppMessage({
+            cfg,
+            agentId: route.agentId,
+            timestampMs: messageTimestampMs ?? Date.now(),
+            group,
+            chatId: peerId,
+            groupSubject,
+            senderE164: senderE164 ?? undefined,
+            pushName: msg.pushName ?? undefined,
+            isFromMe: Boolean(msg.key?.fromMe),
+            body: monitorBody,
+          });
+        }
+      }
+      // --- End passive monitor ---
 
       const access = await checkInboundAccessControl({
         accountId: options.accountId,
